@@ -1203,7 +1203,9 @@ function PushSettings({ onToast }) {
         setStatus(instance.User.PushSubscription.optedIn ? "subscribed" : "unsubscribed");
       })
       .catch(() => {
-        if (active) setStatus("error");
+        if (active) {
+          setStatus(typeof Notification !== "undefined" && Notification.permission === "denied" ? "blocked" : "error");
+        }
       });
 
     return () => {

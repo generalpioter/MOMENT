@@ -1,9 +1,6 @@
 const APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
 const BASE_PATH = import.meta.env.BASE_URL;
-const RELATIVE_BASE_PATH = BASE_PATH.replace(/^\/+|\/+$/g, "");
-const SERVICE_WORKER_PATH = RELATIVE_BASE_PATH
-  ? `${RELATIVE_BASE_PATH}/push/onesignal/OneSignalSDKWorker.js`
-  : "push/onesignal/OneSignalSDKWorker.js";
+const SERVICE_WORKER_PATH = "push/onesignal/OneSignalSDKWorker.js";
 
 let oneSignalPromise;
 
