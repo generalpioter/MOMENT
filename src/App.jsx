@@ -8,6 +8,7 @@ import {
   Download, MapPin, Tag, Users, Settings
 } from "lucide-react";
 import { loadList, loadMemoryMetadata, persistMemories, restoreMemoryImages, saveList } from "./storage.js";
+import { getOneSignal, isOneSignalConfigured } from "./onesignal.js";
 import "./index.css";
 
 const navigation = [
@@ -1171,7 +1172,98 @@ function RemindersView({ memories, onOpenMemory, onAddMemory }) {
   );
 }
 
-function SettingsView({ storageBytes, onExport, onImport }) {
+function PushSettings({ onToast }) {
+  const configured = isOneSignalConfigured();
+  const [status, setStatus] = useState(configured ? "loading" : "unconfigured");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!configured) return undefined;
+
+    let active = true;
+    let oneSignal;
+    let subscriptionChangeHandler;
+
+    getOneSignal()
+      .then(instance => {
+        oneSignal = instance;
+        if (!active) return;
+
+        if (!instance.Notifications.isPushSupported()) {
+          setStatus("unsupported");
+          return;
+        }
+
+        subscriptionChangeHandler = event => {
+          const subscribed = event?.current?.optedIn ?? instance.User.PushSubscription.optedIn;
+          setStatus(subscribed ? "subscribed" : "unsubscribed");
+        };
+
+        instance.User.PushSubscription.addEventListener("change", subscriptionChangeHandler);
+        setStatus(instance.User.PushSubscription.optedIn ? "subscribed" : "unsubscribed");
+      })
+      .catch(() => {
+        if (active) setStatus("error");
+      });
+
+    return () => {
+      active = false;
+      if (subscriptionChangeHandler) {
+        oneSignal?.User.PushSubscription.removeEventListener("change", subscriptionChangeHandler);
+      }
+    };
+  }, [configured]);
+
+  async function togglePush() {
+    setBusy(true);
+
+    try {
+      const oneSignal = await getOneSignal();
+      if (oneSignal.User.PushSubscription.optedIn) {
+        await oneSignal.User.PushSubscription.optOut();
+      } else {
+        await oneSignal.User.PushSubscription.optIn();
+      }
+
+      setStatus(oneSignal.User.PushSubscription.optedIn ? "subscribed" : "unsubscribed");
+    } catch {
+      onToast("Nie udało się zmienić subskrypcji PUSH. Sprawdź zgodę powiadomień w ustawieniach przeglądarki.");
+      setStatus(typeof Notification !== "undefined" && Notification.permission === "denied" ? "blocked" : "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const messages = {
+    loading: "Łączenie z OneSignal…",
+    unsupported: "Ta przeglądarka nie obsługuje powiadomień push.",
+    subscribed: "Powiadomienia push są włączone na tym urządzeniu.",
+    unsubscribed: "Powiadomienia push są wyłączone na tym urządzeniu.",
+    blocked: "Powiadomienia są zablokowane w ustawieniach przeglądarki.",
+    error: "Nie udało się połączyć z OneSignal.",
+    unconfigured: "Dodaj zmienną VITE_ONESIGNAL_APP_ID w ustawieniach repozytorium GitHub, aby włączyć push."
+  };
+
+  return (
+    <section className="push-settings">
+      <div className="push-settings-copy">
+        <div className="push-settings-title"><Bell size={20} /><h2>Powiadomienia push</h2></div>
+        <p>{messages[status]}</p>
+      </div>
+      {configured && status !== "unsupported" && (
+        <button
+          className={status === "subscribed" ? "secondary-button" : "primary-button"}
+          onClick={togglePush}
+          disabled={busy || status === "loading"}
+        >
+          <Bell size={16} /> {busy ? "Chwila…" : status === "subscribed" ? "Wyłącz push" : "Włącz push"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function SettingsView({ storageBytes, onExport, onImport, onToast }) {
   const megabytes = (storageBytes / (1024 * 1024)).toFixed(2);
   const usage = Math.min(100, storageBytes / (5 * 1024 * 1024) * 100);
 
@@ -1189,6 +1281,7 @@ function SettingsView({ storageBytes, onExport, onImport }) {
         <div className="storage-bar"><span style={{ width: `${usage}%` }} /></div>
         <p>Zdjęcia są przechowywane w pamięci urządzenia. Dostępne miejsce zależy od przeglądarki.</p>
       </section>
+      <PushSettings onToast={onToast} />
       <section className="backup-actions">
         <div><Download size={21} /><h2>Kopie zapasowe</h2><p>Eksportuj wspomnienia, kolekcje i kapsuły albo przywróć zapisany plik JSON.</p><div className="settings-backup-controls"><button className="primary-button" onClick={onExport}><Download size={16} /> Pobierz kopię</button><label className="secondary-button backup-import"><Upload size={15} /> Przywróć kopię<input type="file" accept="application/json,.json" onChange={onImport} hidden /></label></div></div>
       </section>
@@ -1745,6 +1838,7 @@ function App() {
               storageBytes={storageBytes}
               onExport={exportBackup}
               onImport={importBackup}
+              onToast={showToast}
             />
           )}
 

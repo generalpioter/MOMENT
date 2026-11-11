@@ -2591,6 +2591,41 @@ button {
   gap: 10px;
 }
 
+.push-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 700px;
+  padding: 18px 0;
+  border-top: 1px solid #e8ebf2;
+  border-bottom: 1px solid #e8ebf2;
+}
+
+.push-settings-copy {
+  min-width: 0;
+}
+
+.push-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #7487df;
+}
+
+.push-settings-title h2 {
+  margin: 0;
+  color: #363b4d;
+  font: 700 15px 'Manrope', sans-serif;
+}
+
+.push-settings-copy p {
+  margin: 7px 0 0;
+  color: #9297a7;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .global-search-popover {
   position: absolute;
   top: 48px;
@@ -2796,6 +2831,12 @@ button {
 
   .backup-actions p {
     min-height: 0;
+  }
+
+  .push-settings {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 13px;
   }
 
   .global-search-popover {
