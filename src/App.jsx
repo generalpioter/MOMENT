@@ -431,6 +431,9 @@ function TimelineView({
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Wszystkie");
+  const [selectedTag, setSelectedTag] = useState("");
+  const [selectedPerson, setSelectedPerson] = useState("");
+  const [selectedPlace, setSelectedPlace] = useState("");
 
   const filters = [
     "Wszystkie",
@@ -440,6 +443,13 @@ function TimelineView({
     "Wideo",
     "Wydarzenie"
   ];
+
+  const tags = [...new Set(memories.flatMap(memory => memory.tags || []).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pl"));
+  const people = [...new Set(memories.flatMap(memory => memory.people || []).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pl"));
+  const places = [...new Set(memories.map(memory => memory.place).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pl"));
 
   const filtered = memories
     .filter(memory => {
@@ -455,9 +465,25 @@ function TimelineView({
             : memory.type.toLowerCase() === filter.toLowerCase()
         );
 
-      return matchesQuery && matchesType;
+      const matchesTag = !selectedTag || (memory.tags || []).includes(selectedTag);
+      const matchesPerson = !selectedPerson || (memory.people || []).includes(selectedPerson);
+      const matchesPlace = !selectedPlace || memory.place === selectedPlace;
+
+      return matchesQuery && matchesType && matchesTag && matchesPerson && matchesPlace;
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const hasActiveFilters = Boolean(
+    query || filter !== "Wszystkie" || selectedTag || selectedPerson || selectedPlace
+  );
+
+  function clearFilters() {
+    setQuery("");
+    setFilter("Wszystkie");
+    setSelectedTag("");
+    setSelectedPerson("");
+    setSelectedPlace("");
+  }
 
   const grouped = filtered.reduce((groups, memory) => {
     const date = new Date(`${memory.date}T12:00:00`);
@@ -523,7 +549,46 @@ function TimelineView({
               {item}
             </button>
           ))}
+          {hasActiveFilters && (
+            <button className="timeline-reset" onClick={clearFilters}>
+              Wyczyść filtry
+            </button>
+          )}
         </div>
+
+        {(tags.length > 0 || people.length > 0 || places.length > 0) && (
+          <div className="timeline-facets">
+            {tags.length > 0 && (
+              <label>
+                <span><Tag size={13} /> Tag</span>
+                <select value={selectedTag} onChange={event => setSelectedTag(event.target.value)}>
+                  <option value="">Wszystkie tagi</option>
+                  {tags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                </select>
+              </label>
+            )}
+
+            {people.length > 0 && (
+              <label>
+                <span><Users size={13} /> Osoba</span>
+                <select value={selectedPerson} onChange={event => setSelectedPerson(event.target.value)}>
+                  <option value="">Wszystkie osoby</option>
+                  {people.map(person => <option key={person} value={person}>{person}</option>)}
+                </select>
+              </label>
+            )}
+
+            {places.length > 0 && (
+              <label>
+                <span><MapPin size={13} /> Miejsce</span>
+                <select value={selectedPlace} onChange={event => setSelectedPlace(event.target.value)}>
+                  <option value="">Wszystkie miejsca</option>
+                  {places.map(place => <option key={place} value={place}>{place}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
       </div>
 
       {filtered.length > 0 ? (
@@ -598,14 +663,6 @@ function TimelineView({
               : "Spróbuj zmienić wyszukiwanie lub wybrany filtr."}
           </p>
 
-          {memories.length > 0 && (
-            <button onClick={() => {
-              setQuery("");
-              setFilter("Wszystkie");
-            }}>
-              Wyczyść filtry
-            </button>
-          )}
         </div>
       )}
     </div>
