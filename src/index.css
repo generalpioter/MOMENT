@@ -2340,7 +2340,7 @@ button {
 
 .capsules-mode > :not(.capsules-view),
 .reminders-mode > :not(.reminders-view),
-.backup-mode > :not(.backup-view) {
+.settings-mode > :not(.settings-view) {
   display: none;
 }
 
@@ -2551,19 +2551,14 @@ button {
 }
 
 .backup-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 900px;
+  display: block;
+  max-width: 700px;
   margin-top: 16px;
 }
 
 .backup-actions > div {
-  padding: 22px 24px 22px 0;
-}
-
-.backup-actions > div + div {
-  padding-left: 24px;
-  border-left: 1px solid #e8ebf2;
+  padding: 22px 0;
+  border-bottom: 1px solid #e8ebf2;
 }
 
 .backup-actions > div > svg {
@@ -2587,6 +2582,13 @@ button {
 .backup-import {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
+}
+
+.settings-backup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .global-search-popover {
@@ -2646,6 +2648,16 @@ button {
 
 .notification-popover {
   width: min(300px, calc(100vw - 32px));
+}
+
+.notification-popover {
+  position: fixed;
+  top: 84px;
+  right: max(12px, env(safe-area-inset-right));
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(60vh, 480px);
+  overflow: auto;
+  z-index: 90;
 }
 
 .notification-all {
@@ -2779,7 +2791,6 @@ button {
   .backup-actions > div,
   .backup-actions > div + div {
     padding: 18px 0;
-    border-left: 0;
     border-bottom: 1px solid #e8ebf2;
   }
 
@@ -2789,6 +2800,12 @@ button {
 
   .global-search-popover {
     right: 0;
+  }
+
+  .notification-popover {
+    top: 70px;
+    right: max(12px, env(safe-area-inset-right));
+    max-height: min(65vh, 520px);
   }
 
   .toast {

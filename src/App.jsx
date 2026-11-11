@@ -5,39 +5,10 @@ import {
   Clock3, Cloud, Images, LayoutDashboard, LockKeyhole,
   Mic2, Plus, Search, Sparkles, Upload, X, Trash2,
   FolderPlus, Folder, ArrowLeft, Check, Pencil, Undo2, Star,
-  Download, MapPin, Tag, Users
+  Download, MapPin, Tag, Users, Settings
 } from "lucide-react";
+import { loadList, loadMemoryMetadata, persistMemories, restoreMemoryImages, saveList } from "./storage.js";
 import "./index.css";
-
-const starterMemories = [
-  {
-    id: "sample-1",
-    title: "Letni wieczór nad morzem",
-    date: "2026-08-18",
-    type: "Zdjęcia",
-    count: "12 zdjęć",
-    color: "sea",
-    description: "Piękny wieczór nad morzem."
-  },
-  {
-    id: "sample-2",
-    title: "Małe chwile, wielkie rzeczy",
-    date: "2026-08-12",
-    type: "Notatka",
-    count: "Notatka",
-    color: "sunset",
-    description: "Czasami najmniejsze rzeczy znaczą najwięcej."
-  },
-  {
-    id: "sample-3",
-    title: "Głos, który chcę pamiętać",
-    date: "2026-08-04",
-    type: "Nagranie",
-    count: "02:34 min",
-    color: "voice",
-    description: "Wspomnienie głosowe."
-  }
-];
 
 const navigation = [
   { label: "Przegląd", icon: LayoutDashboard },
@@ -78,28 +49,6 @@ function splitLabels(value) {
 
 function joinLabels(value) {
   return Array.isArray(value) ? value.join(", ") : "";
-}
-
-function loadList(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-// Zwraca false, jeśli zapis się nie udał (np. przepełniony localStorage).
-function saveList(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /* ---------- confirm dialog (zamiast window.confirm) ---------- */
@@ -1222,27 +1171,26 @@ function RemindersView({ memories, onOpenMemory, onAddMemory }) {
   );
 }
 
-function BackupView({ storageBytes, onExport, onImport }) {
+function SettingsView({ storageBytes, onExport, onImport }) {
   const megabytes = (storageBytes / (1024 * 1024)).toFixed(2);
   const usage = Math.min(100, storageBytes / (5 * 1024 * 1024) * 100);
 
   return (
-    <div className="backup-view">
+    <div className="settings-view">
       <div className="timeline-intro">
         <div>
-          <div className="eyebrow"><Cloud size={14} /> TWOJE DANE POZOSTAJĄ NA TYM URZĄDZENIU</div>
-          <h1>Kopie zapasowe<span>.</span></h1>
-          <p>Eksportuj wspomnienia jako plik JSON i przywróć je na tym lub innym urządzeniu.</p>
+          <div className="eyebrow"><Settings size={14} /> TWOJE DANE I PREFERENCJE</div>
+          <h1>Ustawienia<span>.</span></h1>
+          <p>Zarządzaj pamięcią aplikacji oraz kopiami zapasowymi.</p>
         </div>
       </div>
       <section className="backup-storage">
-        <div className="storage-heading"><span>Szacowane użycie pamięci przeglądarki</span><strong>{megabytes} MB</strong></div>
+        <div className="storage-heading"><span>Użycie pamięci aplikacji (szacunek)</span><strong>{megabytes} MB</strong></div>
         <div className="storage-bar"><span style={{ width: `${usage}%` }} /></div>
-        <p>Przybliżony wskaźnik względem typowego limitu 5 MB. Rzeczywisty limit zależy od przeglądarki.</p>
+        <p>Zdjęcia są przechowywane w pamięci urządzenia. Dostępne miejsce zależy od przeglądarki.</p>
       </section>
       <section className="backup-actions">
-        <div><Download size={21} /><h2>Eksportuj kopię</h2><p>Zapisz wspomnienia, kolekcje i kapsuły w jednym pliku.</p><button className="primary-button" onClick={onExport}><Download size={16} /> Pobierz kopię JSON</button></div>
-        <div><Upload size={21} /><h2>Przywróć kopię</h2><p>Import zastąpi bieżące wspomnienia, kolekcje i kapsuły.</p><label className="secondary-button backup-import">Wybierz plik JSON<input type="file" accept="application/json,.json" onChange={onImport} hidden /></label></div>
+        <div><Download size={21} /><h2>Kopie zapasowe</h2><p>Eksportuj wspomnienia, kolekcje i kapsuły albo przywróć zapisany plik JSON.</p><div className="settings-backup-controls"><button className="primary-button" onClick={onExport}><Download size={16} /> Pobierz kopię</button><label className="secondary-button backup-import"><Upload size={15} /> Przywróć kopię<input type="file" accept="application/json,.json" onChange={onImport} hidden /></label></div></div>
       </section>
     </div>
   );
@@ -1262,9 +1210,9 @@ function App() {
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
-  const [memories, setMemories] = useState(() =>
-    loadList("moment_memories", starterMemories)
-  );
+  const [memories, setMemories] = useState(loadMemoryMetadata);
+  const [storageReady, setStorageReady] = useState(false);
+  const initialMemories = useRef(memories);
 
   const [collections, setCollections] = useState(() =>
     loadList("moment_collections", [])
@@ -1288,12 +1236,40 @@ function App() {
   const [image, setImage] = useState("");
   const [imageName, setImageName] = useState("");
 
-  // Zapis do localStorage w efektach (bez efektów ubocznych w updaterach stanu).
   useEffect(() => {
-    if (!saveList("moment_memories", memories)) {
-      showToast("Nie udało się zapisać zmian – pamięć przeglądarki jest pełna.");
-    }
-  }, [memories]);
+    let active = true;
+
+    restoreMemoryImages(initialMemories.current)
+      .then(restored => {
+        if (!active) return;
+        setMemories(restored);
+        setStorageReady(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setStorageReady(true);
+        showToast("Nie udało się odczytać zdjęć z pamięci urządzenia.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return undefined;
+
+    let active = true;
+    persistMemories(memories).then(saved => {
+      if (active && !saved) {
+        showToast("Nie udało się zapisać wspomnień. Zwolnij miejsce w pamięci urządzenia.");
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [memories, storageReady]);
 
   useEffect(() => {
     saveList("moment_collections", collections);
@@ -1555,8 +1531,8 @@ function App() {
           ? "capsules-mode"
           : activePage === "Przypomnienia"
             ? "reminders-mode"
-            : activePage === "Kopie zapasowe"
-              ? "backup-mode"
+              : activePage === "Ustawienia"
+                ? "settings-mode"
         : "";
 
   return (
@@ -1606,17 +1582,17 @@ function App() {
         <div className="sidebar-label">TWOJA PRZESTRZEŃ</div>
 
         <button
-          className={`nav-item ${activePage === "Kopie zapasowe" ? "active" : ""}`}
-          onClick={() => setActivePage("Kopie zapasowe")}
+          className={`nav-item ${activePage === "Ustawienia" ? "active" : ""}`}
+          onClick={() => setActivePage("Ustawienia")}
         >
-          <Cloud size={19} strokeWidth={1.8} />
-          <span>Kopie zapasowe</span>
+          <Settings size={19} strokeWidth={1.8} />
+          <span>Ustawienia</span>
         </button>
 
         <div className="sidebar-bottom">
-          <button className="storage-card" onClick={() => setActivePage("Kopie zapasowe")}>
+          <button className="storage-card" onClick={() => setActivePage("Ustawienia")}>
             <div className="storage-heading">
-              <span>Twoja przestrzeń</span>
+              <span>Pamięć aplikacji</span>
               <Cloud size={16} />
             </div>
 
@@ -1630,12 +1606,12 @@ function App() {
             </div>
           </button>
 
-          <button className="profile-button" onClick={() => setActivePage("Kopie zapasowe")}>
-            <div className="avatar"><Cloud size={16} /></div>
+          <button className="profile-button" onClick={() => setActivePage("Ustawienia")}>
+            <div className="avatar"><Settings size={16} /></div>
 
             <div className="profile-info">
-              <strong>Kopie zapasowe</strong>
-              <span>Eksport i import danych</span>
+              <strong>Ustawienia</strong>
+              <span>Dane i kopie zapasowe</span>
             </div>
 
             <ChevronRight size={17} />
@@ -1674,8 +1650,8 @@ function App() {
 
             <div className="topbar-divider" />
 
-            <button className="topbar-profile" onClick={() => setActivePage("Kopie zapasowe")} aria-label="Otwórz kopie zapasowe">
-              <div className="avatar small"><Cloud size={15} /></div>
+            <button className="topbar-profile" onClick={() => setActivePage("Ustawienia")} aria-label="Otwórz ustawienia">
+              <div className="avatar small"><Settings size={15} /></div>
               <ChevronDown size={15} />
             </button>
 
@@ -1764,8 +1740,8 @@ function App() {
             />
           )}
 
-          {activePage === "Kopie zapasowe" && (
-            <BackupView
+          {activePage === "Ustawienia" && (
+            <SettingsView
               storageBytes={storageBytes}
               onExport={exportBackup}
               onImport={importBackup}
