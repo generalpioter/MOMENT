@@ -2777,6 +2777,11 @@ button {
   font-size: 9px;
 }
 
+.notification-reminder span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .global-search-results p {
   margin: 10px;
   color: #989dad;
@@ -2791,7 +2796,7 @@ button {
   position: fixed;
   top: 84px;
   right: max(12px, env(safe-area-inset-right));
-  width: min(340px, calc(100vw - 24px));
+  width: min(340px, calc(100% - 24px));
   max-height: min(60vh, 480px);
   overflow: auto;
   z-index: 90;
@@ -2946,13 +2951,36 @@ button {
   }
 
   .notification-popover {
-    top: 70px;
+    top: max(70px, calc(62px + env(safe-area-inset-top)));
     right: max(12px, env(safe-area-inset-right));
-    max-height: min(65vh, 520px);
+    width: min(340px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: min(65dvh, 520px, calc(100dvh - 92px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
   }
 
   .toast {
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    width: fit-content;
+    max-width: min(420px, calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    margin-inline: auto;
     bottom: calc(78px + env(safe-area-inset-bottom));
+    padding: 10px 10px 10px 12px;
+    gap: 8px;
+    transform: none;
+  }
+
+  .toast > span:first-child {
+    flex: 1 1 auto;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .toast-undo,
+  .toast-close {
+    flex-shrink: 0;
   }
 }
 
@@ -2967,6 +2995,22 @@ button {
 
   .featured-content h2 {
     font-size: 21px;
+  }
+
+  .toast {
+    gap: 6px;
+    padding: 9px;
+    font-size: 11px;
+  }
+
+  .toast-undo {
+    gap: 4px;
+    padding: 7px 8px;
+  }
+
+  .toast-close {
+    width: 28px;
+    height: 28px;
   }
 
   .timeline-intro {
