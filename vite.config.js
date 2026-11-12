@@ -5,7 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 const [repositoryOwner, repositoryName] = env.GITHUB_REPOSITORY?.split('/') ?? []
 const isUserPagesRepository = repositoryName?.toLowerCase() === `${repositoryOwner?.toLowerCase()}.github.io`
-const base = env.GITHUB_ACTIONS === 'true' && repositoryName && !isUserPagesRepository
+const isCapacitorBuild = env.CAPACITOR_BUILD === 'true'
+const base = !isCapacitorBuild && env.GITHUB_ACTIONS === 'true' && repositoryName && !isUserPagesRepository
   ? `/${repositoryName}/`
   : '/'
 

@@ -18,6 +18,28 @@ Wypchnij projekt na gałąź `main` lub `master`, a workflow `.github/workflows/
 - Android: otwórz adres Pages w Chrome i wybierz **Zainstaluj aplikację** lub **Dodaj do ekranu głównego**.
 - iPhone: otwórz adres Pages w Safari, wybierz **Udostępnij**, a następnie **Dodaj do ekranu początkowego**.
 
+## APK dla Androida
+
+Projekt zawiera natywną obudowę Androida opartą na Capacitorze. Aby lokalnie wygenerować instalowalny APK, zainstaluj Android Studio z Android SDK oraz JDK 21, a następnie:
+
+```bash
+npm ci
+npm run android:sync
+cd android
+./gradlew assembleDebug
+```
+
+W Windows PowerShell uruchom zamiast ostatnich dwóch poleceń:
+
+```powershell
+Set-Location android
+.\gradlew.bat assembleDebug
+```
+
+Gotowy plik APK znajdziesz w `android/app/build/outputs/apk/debug/app-debug.apk`. Można go pobrać i zainstalować na urządzeniu z Androidem (może być konieczne zezwolenie na instalację z tego źródła). APK debug służy do testów i ręcznej instalacji, nie do publikacji w Google Play. Workflow **Build Android APK** tworzy taki plik jako artefakt do pobrania w GitHub Actions. Publikacja w Google Play wymaga skonfigurowania podpisanego pakietu AAB.
+
+Capacitor nie dodaje natywnych powiadomień push. Obecna integracja OneSignal działa w wersji PWA w obsługiwanej przeglądarce; powiadomienia z natywnego APK wymagałyby osobnej integracji Android SDK.
+
 ## Powiadomienia push
 
 1. Utwórz aplikację Web Push w OneSignal, wybierz integrację **Custom Code** i ustaw Site URL na `https://generalpioter.github.io`.

@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+android/.gradle
+android/local.properties
+android/app/build
+android/build
 
 # Editor directories and files
 .vscode/*
