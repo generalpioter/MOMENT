@@ -32,8 +32,6 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Build PWA
-        env:
-          VITE_ONESIGNAL_APP_ID: ${{ vars.VITE_ONESIGNAL_APP_ID }}
         run: npm run build
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

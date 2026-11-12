@@ -15,6 +15,7 @@ android/.gradle
 android/local.properties
 android/app/build
 android/build
+*.jks
 
 # Editor directories and files
 .vscode/*

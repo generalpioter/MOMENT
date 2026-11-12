@@ -2693,39 +2693,40 @@ button {
   gap: 10px;
 }
 
-.push-settings {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+.backup-drive {
   max-width: 700px;
   padding: 18px 0;
-  border-top: 1px solid #e8ebf2;
   border-bottom: 1px solid #e8ebf2;
 }
 
-.push-settings-copy {
-  min-width: 0;
-}
-
-.push-settings-title {
+.backup-drive-heading {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.backup-drive-heading svg {
+  flex: 0 0 auto;
   color: #7487df;
 }
 
-.push-settings-title h2 {
+.backup-drive h2 {
   margin: 0;
   color: #363b4d;
-  font: 700 15px 'Manrope', sans-serif;
+  font: 700 16px 'Manrope', sans-serif;
 }
 
-.push-settings-copy p {
-  margin: 7px 0 0;
+.backup-drive p,
+.backup-drive small {
+  display: block;
+  margin: 9px 0 13px;
   color: #9297a7;
   font-size: 11px;
   line-height: 1.6;
+}
+
+.backup-drive small {
+  margin: 11px 0 0;
 }
 
 .global-search-popover {
@@ -2938,12 +2939,6 @@ button {
 
   .backup-actions p {
     min-height: 0;
-  }
-
-  .push-settings {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 13px;
   }
 
   .global-search-popover {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Aperture, Bell, Bookmark, CalendarDays, ChevronDown, ChevronRight,
   Clock3, Cloud, Images, LayoutDashboard, LockKeyhole,
@@ -8,8 +9,10 @@ import {
   Download, MapPin, Tag, Users, Settings
 } from "lucide-react";
 import { loadList, loadMemoryMetadata, persistMemories, restoreMemoryImages, saveList } from "./storage.js";
-import { getOneSignal, isOneSignalConfigured } from "./onesignal.js";
 import "./index.css";
+
+const DriveBackup = registerPlugin("DriveBackup");
+const isAndroidApp = Capacitor.getPlatform() === "android";
 
 const navigation = [
   { label: "Przegląd", icon: LayoutDashboard },
@@ -42,6 +45,48 @@ function formatDate(value) {
 function localDateValue(date = new Date()) {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function createBackupPayload(memories, collections, capsules) {
+  return {
+    format: "moment-backup",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    memories,
+    collections,
+    capsules
+  };
+}
+
+function parseBackupContent(content) {
+  const backup = JSON.parse(content);
+  if (
+    backup.format !== "moment-backup" ||
+    !Array.isArray(backup.memories) ||
+    !Array.isArray(backup.collections) ||
+    (backup.capsules !== undefined && !Array.isArray(backup.capsules)) ||
+    !backup.memories.every(memory => memory && typeof memory.id === "string" && typeof memory.title === "string")
+  ) {
+    throw new Error("Nieprawidłowy format kopii.");
+  }
+
+  return {
+    memories: backup.memories.map(memory => ({
+      ...memory,
+      tags: Array.isArray(memory.tags) ? memory.tags : [],
+      people: Array.isArray(memory.people) ? memory.people : [],
+      place: memory.place || "",
+      reminderDate: memory.reminderDate || ""
+    })),
+    collections: backup.collections.map(collection => ({
+      ...collection,
+      memoryIds: Array.isArray(collection.memoryIds) ? collection.memoryIds : []
+    })),
+    capsules: (backup.capsules || []).map(capsule => ({
+      ...capsule,
+      memoryIds: Array.isArray(capsule.memoryIds) ? capsule.memoryIds : []
+    }))
+  };
 }
 
 function splitLabels(value) {
@@ -1271,100 +1316,17 @@ function RemindersView({ memories, onOpenMemory, onAddMemory }) {
   );
 }
 
-function PushSettings({ onToast }) {
-  const configured = isOneSignalConfigured();
-  const [status, setStatus] = useState(configured ? "loading" : "unconfigured");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!configured) return undefined;
-
-    let active = true;
-    let oneSignal;
-    let subscriptionChangeHandler;
-
-    getOneSignal()
-      .then(instance => {
-        oneSignal = instance;
-        if (!active) return;
-
-        if (!instance.Notifications.isPushSupported()) {
-          setStatus("unsupported");
-          return;
-        }
-
-        subscriptionChangeHandler = event => {
-          const subscribed = event?.current?.optedIn ?? instance.User.PushSubscription.optedIn;
-          setStatus(subscribed ? "subscribed" : "unsubscribed");
-        };
-
-        instance.User.PushSubscription.addEventListener("change", subscriptionChangeHandler);
-        setStatus(instance.User.PushSubscription.optedIn ? "subscribed" : "unsubscribed");
-      })
-      .catch(() => {
-        if (active) {
-          setStatus(typeof Notification !== "undefined" && Notification.permission === "denied" ? "blocked" : "error");
-        }
-      });
-
-    return () => {
-      active = false;
-      if (subscriptionChangeHandler) {
-        oneSignal?.User.PushSubscription.removeEventListener("change", subscriptionChangeHandler);
-      }
-    };
-  }, [configured]);
-
-  async function togglePush() {
-    setBusy(true);
-
-    try {
-      const oneSignal = await getOneSignal();
-      if (oneSignal.User.PushSubscription.optedIn) {
-        await oneSignal.User.PushSubscription.optOut();
-      } else {
-        await oneSignal.User.PushSubscription.optIn();
-      }
-
-      setStatus(oneSignal.User.PushSubscription.optedIn ? "subscribed" : "unsubscribed");
-    } catch {
-      onToast("Nie udało się zmienić subskrypcji PUSH. Sprawdź zgodę powiadomień w ustawieniach przeglądarki.");
-      setStatus(typeof Notification !== "undefined" && Notification.permission === "denied" ? "blocked" : "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const messages = {
-    loading: "Łączenie z OneSignal…",
-    unsupported: "Ta przeglądarka nie obsługuje powiadomień push.",
-    subscribed: "Powiadomienia push są włączone na tym urządzeniu.",
-    unsubscribed: "Powiadomienia push są wyłączone na tym urządzeniu.",
-    blocked: "Powiadomienia są zablokowane w ustawieniach przeglądarki.",
-    error: "Nie udało się połączyć z OneSignal.",
-    unconfigured: "Dodaj zmienną VITE_ONESIGNAL_APP_ID w ustawieniach repozytorium GitHub, aby włączyć push."
-  };
-
-  return (
-    <section className="push-settings">
-      <div className="push-settings-copy">
-        <div className="push-settings-title"><Bell size={20} /><h2>Powiadomienia push</h2></div>
-        <p>{messages[status]}</p>
-      </div>
-      {configured && status !== "unsupported" && (
-        <button
-          className={status === "subscribed" ? "secondary-button" : "primary-button"}
-          onClick={togglePush}
-          disabled={busy || status === "loading"}
-        >
-          <Bell size={16} /> {busy ? "Chwila…" : status === "subscribed" ? "Wyłącz push" : "Włącz push"}
-        </button>
-      )}
-    </section>
-  );
-}
-
-function SettingsView({ storageBytes, onExport, onImport, onToast }) {
+function SettingsView({
+  storageBytes,
+  onExport,
+  onRestoreClick,
+  onImport,
+  importInputRef,
+  isAndroidApp,
+  backupFolder,
+  backupStatus,
+  onChooseBackupFolder
+}) {
   const megabytes = (storageBytes / (1024 * 1024)).toFixed(2);
   const usage = Math.min(100, storageBytes / (5 * 1024 * 1024) * 100);
 
@@ -1382,10 +1344,40 @@ function SettingsView({ storageBytes, onExport, onImport, onToast }) {
         <div className="storage-bar"><span style={{ width: `${usage}%` }} /></div>
         <p>Zdjęcia są przechowywane w pamięci urządzenia. Dostępne miejsce zależy od przeglądarki.</p>
       </section>
-      <PushSettings onToast={onToast} />
       <section className="backup-actions">
-        <div><Download size={21} /><h2>Kopie zapasowe</h2><p>Eksportuj wspomnienia, kolekcje i kapsuły albo przywróć zapisany plik JSON.</p><div className="settings-backup-controls"><button className="primary-button" onClick={onExport}><Download size={16} /> Pobierz kopię</button><label className="secondary-button backup-import"><Upload size={15} /> Przywróć kopię<input type="file" accept="application/json,.json" onChange={onImport} hidden /></label></div></div>
+        <div>
+          <Download size={21} />
+          <h2>Kopie zapasowe</h2>
+          <p>Eksportuj wspomnienia, kolekcje i kapsuły albo przywróć zapisany plik JSON.</p>
+          <div className="settings-backup-controls">
+            <button className="primary-button" onClick={onExport}>
+              <Download size={16} /> {isAndroidApp ? "Zapisz kopię teraz" : "Pobierz kopię"}
+            </button>
+            <button className="secondary-button backup-import" onClick={onRestoreClick}>
+              <Upload size={15} /> Przywróć kopię
+            </button>
+            {!isAndroidApp && (
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={onImport}
+                hidden
+              />
+            )}
+          </div>
+        </div>
       </section>
+      {isAndroidApp && (
+        <section className="backup-drive">
+          <div className="backup-drive-heading"><Cloud size={19} /><h2>Automatyczna kopia Google Drive</h2></div>
+          <p>{backupStatus}</p>
+          <button className="secondary-button" onClick={onChooseBackupFolder}>
+            <Folder size={15} /> {backupFolder?.hasFolder ? "Zmień folder kopii" : "Wybierz folder Google Drive"}
+          </button>
+          <small>W systemowym oknie wybierz folder na Dysku Google. Kopie będą zapisywane automatycznie, a ostatnie 5 wersji pozostanie w folderze.</small>
+        </section>
+      )}
     </div>
   );
 }
@@ -1403,10 +1395,16 @@ function App() {
   const [pendingBackup, setPendingBackup] = useState(null);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
+  const importInputRef = useRef(null);
+  const backupRestoreChecked = useRef(false);
+  const autoBackupTimer = useRef(null);
 
   const [memories, setMemories] = useState(loadMemoryMetadata);
   const [storageReady, setStorageReady] = useState(false);
   const initialMemories = useRef(memories);
+  const [backupFolder, setBackupFolder] = useState(null);
+  const [backupReady, setBackupReady] = useState(!isAndroidApp);
+  const [backupStatus, setBackupStatus] = useState(isAndroidApp ? "Sprawdzam folder kopii..." : "");
 
   const [collections, setCollections] = useState(() =>
     loadList("moment_collections", [])
@@ -1414,6 +1412,9 @@ function App() {
 
   const [capsules, setCapsules] = useState(() =>
     loadList("moment_capsules", [])
+  );
+  const autoBackupHasData = useRef(
+    memories.length > 0 || collections.length > 0 || capsules.length > 0
   );
 
   const [form, setForm] = useState({
@@ -1463,6 +1464,68 @@ function App() {
       active = false;
     };
   }, [memories, storageReady]);
+
+  useEffect(() => {
+    if (!isAndroidApp || !storageReady || backupRestoreChecked.current) return undefined;
+    backupRestoreChecked.current = true;
+    let active = true;
+
+    async function checkDriveBackup() {
+      try {
+        const status = await DriveBackup.getStatus();
+        if (!active) return;
+        setBackupFolder(status);
+        if (!status.hasFolder) {
+          setBackupStatus("Wybierz folder, aby włączyć automatyczne kopie.");
+          setBackupReady(true);
+          return;
+        }
+
+        const latest = await DriveBackup.getLatestBackup();
+        if (!active) return;
+        const hasLocalData = memories.length > 0 || collections.length > 0 || capsules.length > 0;
+        if (latest.found && !hasLocalData) {
+          setPendingBackup(parseBackupContent(latest.contents));
+          setBackupStatus("Znaleziono kopię na Dysku Google. Potwierdź jej przywrócenie.");
+          return;
+        }
+
+        setBackupStatus(`Folder kopii: ${status.folderName}. Automatyczne zapisywanie jest włączone.`);
+        setBackupReady(true);
+      } catch (error) {
+        if (!active) return;
+        setBackupStatus("Nie udało się sprawdzić folderu kopii.");
+        setBackupReady(true);
+        showToast(error.message || "Nie udało się odczytać kopii z Dysku Google.");
+      }
+    }
+
+    checkDriveBackup();
+    return () => {
+      active = false;
+    };
+  }, [storageReady, memories.length, collections.length, capsules.length]);
+
+  useEffect(() => {
+    if (!isAndroidApp || !storageReady || !backupReady || !backupFolder?.hasFolder) return undefined;
+    const hasLocalData = memories.length > 0 || collections.length > 0 || capsules.length > 0;
+    if (hasLocalData) autoBackupHasData.current = true;
+    if (!autoBackupHasData.current) return undefined;
+
+    const contents = JSON.stringify(createBackupPayload(memories, collections, capsules));
+    autoBackupTimer.current = setTimeout(async () => {
+      try {
+        const result = await DriveBackup.writeBackup({ contents });
+        const savedAt = new Date(result.lastModified || Date.now()).toLocaleString("pl-PL");
+        setBackupStatus(`Folder kopii: ${backupFolder.folderName}. Ostatni zapis: ${savedAt}.`);
+      } catch (error) {
+        setBackupStatus("Automatyczny zapis kopii nie powiódł się.");
+        showToast(error.message || "Nie udało się zapisać kopii na Dysku Google.");
+      }
+    }, 1200);
+
+    return () => clearTimeout(autoBackupTimer.current);
+  }, [memories, collections, capsules, storageReady, backupReady, backupFolder]);
 
   useEffect(() => {
     saveList("moment_collections", collections);
@@ -1626,16 +1689,32 @@ function App() {
       .slice(0, 6)
     : [];
 
-  function exportBackup() {
-    const backup = {
-      format: "moment-backup",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      memories,
-      collections,
-      capsules
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+  async function exportBackup() {
+    const contents = JSON.stringify(createBackupPayload(memories, collections, capsules), null, 2);
+    if (isAndroidApp) {
+      if (!backupFolder?.hasFolder) {
+        showToast("Najpierw wybierz folder kopii na Dysku Google.");
+        return;
+      }
+      if (!backupReady) {
+        showToast("Najpierw zdecyduj, czy przywrócić znalezioną kopię.");
+        return;
+      }
+
+      try {
+        setBackupStatus("Zapisuję kopię na Dysku Google...");
+        const result = await DriveBackup.writeBackup({ contents });
+        const savedAt = new Date(result.lastModified || Date.now()).toLocaleString("pl-PL");
+        setBackupStatus(`Folder kopii: ${backupFolder.folderName}. Ostatni zapis: ${savedAt}.`);
+        showToast("Kopia została zapisana na Dysku Google.");
+      } catch (error) {
+        setBackupStatus("Zapis kopii na Dysku Google nie powiódł się.");
+        showToast(error.message || "Nie udało się zapisać kopii na Dysku Google.");
+      }
+      return;
+    }
+
+    const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = `moment-kopia-${localDateValue()}.json`;
@@ -1644,39 +1723,58 @@ function App() {
     showToast("Kopia zapasowa została pobrana.");
   }
 
+  async function chooseBackupFolder() {
+    try {
+      setBackupReady(false);
+      const selected = await DriveBackup.chooseFolder();
+      if (selected.cancelled) {
+        setBackupReady(true);
+        return;
+      }
+
+      const status = await DriveBackup.getStatus();
+      setBackupFolder(status);
+      setBackupStatus(`Folder kopii: ${status.folderName}. Sprawdzam istniejące kopie...`);
+
+      const latest = await DriveBackup.getLatestBackup();
+      const hasLocalData = memories.length > 0 || collections.length > 0 || capsules.length > 0;
+      if (latest.found && !hasLocalData) {
+        setPendingBackup(parseBackupContent(latest.contents));
+        setBackupStatus("Znaleziono kopię na Dysku Google. Potwierdź jej przywrócenie.");
+        return;
+      }
+
+      setBackupReady(true);
+      setBackupStatus(`Folder kopii: ${status.folderName}. Automatyczne zapisywanie jest włączone.`);
+      showToast("Folder kopii został połączony.");
+    } catch (error) {
+      setBackupReady(true);
+      setBackupStatus("Nie udało się połączyć folderu kopii.");
+      showToast(error.message || "Nie udało się wybrać folderu kopii.");
+    }
+  }
+
+  async function requestRestoreBackup() {
+    if (!isAndroidApp) {
+      importInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const result = await DriveBackup.pickBackupFile();
+      if (result.cancelled) return;
+      setPendingBackup(parseBackupContent(result.contents));
+    } catch (error) {
+      showToast(error.message || "Nie udało się odczytać wybranego pliku kopii.");
+    }
+  }
+
   async function importBackup(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const backup = JSON.parse(await file.text());
-      if (
-        backup.format !== "moment-backup" ||
-        !Array.isArray(backup.memories) ||
-        !Array.isArray(backup.collections) ||
-        (backup.capsules !== undefined && !Array.isArray(backup.capsules)) ||
-        !backup.memories.every(memory => memory && typeof memory.id === "string" && typeof memory.title === "string")
-      ) {
-        throw new Error("Nieprawidłowy format kopii.");
-      }
-
-      setPendingBackup({
-        memories: backup.memories.map(memory => ({
-          ...memory,
-          tags: Array.isArray(memory.tags) ? memory.tags : [],
-          people: Array.isArray(memory.people) ? memory.people : [],
-          place: memory.place || "",
-          reminderDate: memory.reminderDate || ""
-        })),
-        collections: backup.collections.map(collection => ({
-          ...collection,
-          memoryIds: Array.isArray(collection.memoryIds) ? collection.memoryIds : []
-        })),
-        capsules: (backup.capsules || []).map(capsule => ({
-          ...capsule,
-          memoryIds: Array.isArray(capsule.memoryIds) ? capsule.memoryIds : []
-        }))
-      });
+      setPendingBackup(parseBackupContent(await file.text()));
     } catch {
       showToast("Nie udało się odczytać kopii. Wybierz poprawny plik JSON.");
     } finally {
@@ -1690,6 +1788,7 @@ function App() {
     setCollections(pendingBackup.collections);
     setCapsules(pendingBackup.capsules);
     setPendingBackup(null);
+    setBackupReady(true);
     showToast("Kopia została przywrócona.");
   }
 
@@ -1926,8 +2025,13 @@ function App() {
             <SettingsView
               storageBytes={storageBytes}
               onExport={exportBackup}
+              onRestoreClick={requestRestoreBackup}
               onImport={importBackup}
-              onToast={showToast}
+              importInputRef={importInputRef}
+              isAndroidApp={isAndroidApp}
+              backupFolder={backupFolder}
+              backupStatus={backupStatus}
+              onChooseBackupFolder={chooseBackupFolder}
             />
           )}
 
@@ -2429,7 +2533,10 @@ function App() {
             message={`Bieżące dane zostaną zastąpione. Kopia zawiera ${pendingBackup.memories.length} wspomnień, ${pendingBackup.collections.length} kolekcji i ${pendingBackup.capsules.length} kapsuł.`}
             confirmLabel="Przywróć dane"
             onConfirm={restoreBackup}
-            onCancel={() => setPendingBackup(null)}
+            onCancel={() => {
+              setPendingBackup(null);
+              setBackupReady(true);
+            }}
           />
         )}
       </AnimatePresence>
