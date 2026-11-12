@@ -55,7 +55,12 @@ function transactionResult(transaction) {
 }
 
 export async function restoreMemoryImages(memories) {
-  if (typeof indexedDB === "undefined") return memories;
+  if (typeof indexedDB === "undefined") {
+    return memories.map(memory => {
+      const images = memory.images || (memory.image ? [memory.image] : []);
+      return { ...memory, images, image: memory.image || images[0] || "" };
+    });
+  }
 
   let database;
 
@@ -65,14 +70,22 @@ export async function restoreMemoryImages(memories) {
     const finished = transactionResult(transaction);
     const imageStore = transaction.objectStore(IMAGE_STORE_NAME);
     const hydrated = await Promise.all(memories.map(memory => {
-      if (memory.image) {
-        imageStore.put(memory.image, memory.id);
-        return memory;
+      const inlineImages = memory.images || (memory.image ? [memory.image] : []);
+      if (inlineImages.length > 0) {
+        imageStore.put(inlineImages, memory.id);
+        return { ...memory, images: inlineImages, image: memory.image || inlineImages[0] };
       }
 
       return requestValue(imageStore.get(memory.id))
-        .then(image => ({ ...memory, image: image || "" }))
-        .catch(() => ({ ...memory, image: "" }));
+        .then(storedImages => {
+          const images = Array.isArray(storedImages)
+            ? storedImages
+            : storedImages
+              ? [storedImages]
+              : [];
+          return { ...memory, images, image: memory.image || images[0] || "" };
+        })
+        .catch(() => ({ ...memory, images: [], image: "" }));
     }));
 
     await finished;
@@ -86,6 +99,7 @@ export async function persistMemories(memories) {
   const metadata = memories.map(memory => {
     const savedMemory = { ...memory };
     delete savedMemory.image;
+    delete savedMemory.images;
     return savedMemory;
   });
 
@@ -103,7 +117,8 @@ export async function persistMemories(memories) {
     const memoryIds = new Set(memories.map(memory => memory.id));
 
     for (const memory of memories) {
-      if (memory.image) imageStore.put(memory.image, memory.id);
+      const images = memory.images || (memory.image ? [memory.image] : []);
+      if (images.length > 0) imageStore.put(images, memory.id);
       else imageStore.delete(memory.id);
     }
 

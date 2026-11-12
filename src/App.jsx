@@ -52,6 +52,42 @@ function joinLabels(value) {
   return Array.isArray(value) ? value.join(", ") : "";
 }
 
+function getMemoryImages(memory) {
+  return memory.images?.length ? memory.images : (memory.image ? [memory.image] : []);
+}
+
+function formatImageCount(count) {
+  if (count === 1) return "1 zdjęcie";
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+  return `${count} ${lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14) ? "zdjęcia" : "zdjęć"}`;
+}
+
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Nie udało się odczytać wybranego zdjęcia."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readImageFiles(files, existingCount) {
+  if (existingCount + files.length > 10) {
+    throw new Error("Do jednego wspomnienia możesz dodać maksymalnie 10 zdjęć.");
+  }
+
+  if (files.some(file => !file.type.startsWith("image/"))) {
+    throw new Error("Wybierz pliki graficzne.");
+  }
+
+  if (files.some(file => file.size > 5 * 1024 * 1024)) {
+    throw new Error("Każde zdjęcie może mieć maksymalnie 5 MB.");
+  }
+
+  return Promise.all(files.map(readImageFile));
+}
+
 /* ---------- confirm dialog (zamiast window.confirm) ---------- */
 
 function ConfirmDialog({
@@ -123,7 +159,7 @@ function ConfirmDialog({
 
 function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavorite, onNotify }) {
   const [editing, setEditing] = useState(false);
-  const [image, setImage] = useState(memory.image || "");
+  const [images, setImages] = useState(() => getMemoryImages(memory));
   const [form, setForm] = useState({
     title: memory.title,
     description: memory.description || "",
@@ -142,25 +178,18 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
     }));
   }
 
-  function handleImage(event) {
-    const file = event.target.files?.[0];
+  async function handleImages(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
 
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      onNotify("Wybierz plik graficzny.");
-      return;
+    try {
+      const selectedImages = await readImageFiles(files, images.length);
+      setImages(current => [...current, ...selectedImages]);
+    } catch (error) {
+      onNotify(error.message);
+    } finally {
+      event.target.value = "";
     }
-
-    if (file.size > 5 * 1024 * 1024) {
-      onNotify("Zdjęcie może mieć maksymalnie 5 MB.");
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => setImage(reader.result);
-    reader.readAsDataURL(file);
   }
 
   function saveChanges(event) {
@@ -168,7 +197,9 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
 
     if (!form.title.trim()) return;
 
-    const imageChanged = image !== (memory.image || "");
+    const originalImages = getMemoryImages(memory);
+    const imagesChanged = images.length !== originalImages.length ||
+      images.some((image, index) => image !== originalImages[index]);
 
     onSave({
       ...memory,
@@ -178,9 +209,10 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
       tags: splitLabels(form.tags),
       people: splitLabels(form.people),
       place: form.place.trim(),
-      image,
-      count: imageChanged
-        ? (image ? "1 zdjęcie" : "Wspomnienie")
+      image: images[0] || "",
+      images,
+      count: imagesChanged
+        ? (images.length ? formatImageCount(images.length) : "Wspomnienie")
         : (memory.count || "Wspomnienie")
     });
 
@@ -316,17 +348,21 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
 
             <label className="field-label">Zdjęcie</label>
 
-            {image && (
-              <div className="edit-image-preview">
-                <img src={image} alt="Podgląd wspomnienia" />
-
-                <button
-                  type="button"
-                  className="remove-image"
-                  onClick={() => setImage("")}
-                >
-                  <X size={15} /> Usuń zdjęcie
-                </button>
+            {images.length > 0 && (
+              <div className="edit-image-grid">
+                {images.map((image, index) => (
+                  <div className="edit-image-preview" key={`${memory.id}-image-${index}`}>
+                    <img src={image} alt={`${memory.title}, zdjęcie ${index + 1}`} />
+                    <button
+                      type="button"
+                      className="remove-image"
+                      onClick={() => setImages(current => current.filter((_, imageIndex) => imageIndex !== index))}
+                      aria-label={`Usuń zdjęcie ${index + 1}`}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -335,13 +371,14 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
                 <Upload size={20} />
               </div>
 
-              <strong>Wybierz nowe zdjęcie</strong>
-              <span>JPG, PNG lub WEBP · maksymalnie 5 MB</span>
+              <strong>Dodaj zdjęcia</strong>
+              <span>Do 10 zdjęć · maksymalnie 5 MB każde</span>
 
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleImage}
+                multiple
+                onChange={handleImages}
                 hidden
               />
             </label>
@@ -362,12 +399,17 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
           </form>
         ) : (
           <>
-            {memory.image && (
-              <img
-                className="timeline-detail-image"
-                src={memory.image}
-                alt={memory.title}
-              />
+            {getMemoryImages(memory).length > 0 && (
+              <div className="timeline-detail-gallery">
+                {getMemoryImages(memory).map((image, index) => (
+                  <img
+                    className="timeline-detail-image"
+                    key={`${memory.id}-image-${index}`}
+                    src={image}
+                    alt={`${memory.title}, zdjęcie ${index + 1}`}
+                  />
+                ))}
+              </div>
             )}
 
             <div className="timeline-detail-description">
@@ -1385,8 +1427,7 @@ function App() {
     reminderDate: ""
   });
 
-  const [image, setImage] = useState("");
-  const [imageName, setImageName] = useState("");
+  const [images, setImages] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -1451,29 +1492,18 @@ function App() {
     }));
   }
 
-  function handleImage(event) {
-    const file = event.target.files?.[0];
+  async function handleImages(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
 
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      showToast("Wybierz plik graficzny.");
-      return;
+    try {
+      const selectedImages = await readImageFiles(files, images.length);
+      setImages(current => [...current, ...selectedImages]);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      event.target.value = "";
     }
-
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Zdjęcie może mieć maksymalnie 5 MB.");
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      setImage(reader.result);
-      setImageName(file.name);
-    };
-
-    reader.readAsDataURL(file);
   }
 
   function addMemory(event) {
@@ -1490,9 +1520,10 @@ function App() {
       place: form.place.trim(),
       reminderDate: form.reminderDate,
       createdAt: new Date().toISOString(),
-      count: image ? "1 zdjęcie" : "Wspomnienie",
+      count: images.length ? formatImageCount(images.length) : "Wspomnienie",
       color: "custom",
-      image,
+      image: images[0] || "",
+      images,
       custom: true
     };
 
@@ -1509,8 +1540,7 @@ function App() {
       reminderDate: ""
     });
 
-    setImage("");
-    setImageName("");
+    setImages([]);
     setShowModal(false);
   }
 
@@ -2312,45 +2342,35 @@ function App() {
                   onChange={updateForm}
                 />
 
-                <label className="field-label">Zdjęcie</label>
+                <label className="field-label">Zdjęcia</label>
+
+                {images.length > 0 && (
+                  <div className="memory-upload-grid">
+                    {images.map((image, index) => (
+                      <div className="memory-upload-preview" key={`new-memory-image-${index}`}>
+                        <img src={image} alt={`Podgląd zdjęcia ${index + 1}`} />
+                        <button
+                          type="button"
+                          className="remove-image"
+                          onClick={() => setImages(current => current.filter((_, imageIndex) => imageIndex !== index))}
+                          aria-label={`Usuń zdjęcie ${index + 1}`}
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <label className="upload-area">
-                  {image ? (
-                    <div className="upload-preview">
-                      <img
-                        src={image}
-                        alt="Podgląd wybranego zdjęcia"
-                      />
-
-                      <span>{imageName}</span>
-
-                      <button
-                        type="button"
-                        className="remove-image"
-                        onClick={event => {
-                          event.preventDefault();
-                          setImage("");
-                          setImageName("");
-                        }}
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="upload-icon">
-                        <Upload size={20} />
-                      </div>
-
-                      <strong>Wybierz zdjęcie</strong>
-                      <span>JPG, PNG lub WEBP · maksymalnie 5 MB</span>
-                    </>
-                  )}
-
+                  <div className="upload-icon"><Upload size={20} /></div>
+                  <strong>{images.length ? "Dodaj kolejne zdjęcia" : "Wybierz zdjęcia"}</strong>
+                  <span>Do 10 zdjęć · maksymalnie 5 MB każde</span>
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={handleImage}
+                    multiple
+                    onChange={handleImages}
                     hidden
                   />
                 </label>
