@@ -23,7 +23,7 @@ const navigation = [
   { label: "Ulubione", icon: Bookmark }
 ];
 
-/* ---------- helpers ---------- */
+
 
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -133,7 +133,7 @@ async function readImageFiles(files, existingCount) {
   return Promise.all(files.map(readImageFile));
 }
 
-/* ---------- confirm dialog (zamiast window.confirm) ---------- */
+
 
 function ConfirmDialog({
   title,
@@ -200,7 +200,7 @@ function ConfirmDialog({
   );
 }
 
-/* ---------- memory details ---------- */
+
 
 function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavorite, onNotify }) {
   const [editing, setEditing] = useState(false);
@@ -505,7 +505,7 @@ function MemoryDetails({ memory, onClose, onSave, onRequestDelete, onToggleFavor
   );
 }
 
-/* ---------- timeline ---------- */
+
 
 function TimelineView({
   memories,
@@ -756,7 +756,7 @@ function TimelineView({
   );
 }
 
-/* ---------- collections ---------- */
+
 
 function CollectionsView({ collections, setCollections, memories, onToast }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -1382,7 +1382,7 @@ function SettingsView({
   );
 }
 
-/* ---------- app ---------- */
+
 
 function App() {
   const [activePage, setActivePage] = useState("Przegląd");
@@ -2204,7 +2204,6 @@ function App() {
                         {memory.type}
                       </div>
 
-                      {/* Kosz dostępny dla WSZYSTKICH wspomnień */}
                       <button
                         className="memory-more"
                         onClick={event => {
@@ -2300,7 +2299,6 @@ function App() {
         </div>
       </main>
 
-      {/* Dodawanie wspomnienia */}
       <AnimatePresence>
         {showModal && (
           <motion.div
@@ -2498,7 +2496,6 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Szczegóły wspomnienia */}
       <AnimatePresence>
         {selectedMemory && (
           <MemoryDetails
@@ -2513,7 +2510,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Potwierdzenie usunięcia wspomnienia */}
+
       <AnimatePresence>
         {pendingDelete && (
           <ConfirmDialog
@@ -2541,7 +2538,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Toast z opcją cofnięcia */}
+
       <AnimatePresence>
         {toast && (
           <motion.div

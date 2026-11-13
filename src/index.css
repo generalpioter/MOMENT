@@ -908,7 +908,7 @@ button {
 }
 
 
-/* MEMORY CREATION MODAL */
+
 
 .modal-overlay {
   position: fixed;
@@ -1169,7 +1169,7 @@ button {
 }
 
 
-/* MOMENT TIMELINE */
+
 
 .timeline-view {
   display: none;
@@ -1567,7 +1567,6 @@ button {
 }
 
 
-/* MOMENT COLLECTIONS */
 
 .collections-view {
   display: none;
@@ -2212,16 +2211,13 @@ button {
   outline-offset: 2px;
 }
 
-/* ===== DODAJ NA SAMYM KOŃCU index.css ===== */
 
-/* Widoki są teraz renderowane warunkowo w App.jsx,
-   więc nadpisujemy stare reguły display:none. */
 .timeline-view,
 .collections-view {
   display: block;
 }
 
-/* Kosz na karcie wspomnienia (teraz dla wszystkich kart) */
+
 .memory-more {
   cursor: pointer;
   transition: background .2s ease, color .2s ease;
@@ -2233,7 +2229,7 @@ button {
   color: #fff;
 }
 
-/* Okno potwierdzenia – nad oknem szczegółów (z-index 50) */
+
 .confirm-overlay {
   z-index: 70;
 }
@@ -2293,7 +2289,7 @@ button {
   background: #bf5762;
 }
 
-/* Toast z opcją „Cofnij” */
+
 .toast {
   position: fixed;
   left: 50%;
@@ -2351,7 +2347,7 @@ button {
   color: #fff;
 }
 
-/* Widoczny fokus z klawiatury */
+
 .memory-card:focus-visible,
 .timeline-item:focus-visible,
 .collection-memory-option:focus-visible {
@@ -2359,7 +2355,7 @@ button {
   outline-offset: 2px;
 }
 
-/* ===== ULUBIONE (dopisz pod poprzednimi dodatkami) ===== */
+
 
 .memory-fav {
   position: absolute;
